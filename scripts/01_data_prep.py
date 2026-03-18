@@ -1,86 +1,55 @@
 """
 01_data_prep.py
 ---------------
-Download the Yelp restaurant reviews dataset via kagglehub, sample 15,000 rows
-stratified by star rating, clean the text, and save to data/yelp_processed.csv.
+Load the Yelp Restaurant Reviews dataset, sample 15,000 rows stratified by
+star rating, clean the text, and save to data/yelp_processed.csv.
 
-Dataset:  farukalam/yelp-restaurant-reviews  (Kaggle)
-Output:   data/yelp_processed.csv
+Input:   data/Yelp Restaurant Reviews.csv
+Output:  data/yelp_processed.csv
 """
 
 import os
 import re
-import glob
 import pandas as pd
-import kagglehub
-from tqdm import tqdm
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-DATA_DIR    = os.path.join(os.path.dirname(__file__), "..", "data")
+BASE_DIR    = os.path.join(os.path.dirname(__file__), "..")
+DATA_DIR    = os.path.join(BASE_DIR, "data")
+RAW_CSV     = os.path.join(DATA_DIR, "Yelp Restaurant Reviews.csv")
+OUT_CSV     = os.path.join(DATA_DIR, "yelp_processed.csv")
+
 SAMPLE_SIZE = 15_000
 RANDOM_SEED = 42
 
-# Column name variants to try for review text and star rating
-TEXT_ALIASES   = ["text", "review", "Review", "review_text", "Review_Text", "body"]
-RATING_ALIASES = ["stars", "rating", "Rating", "star_rating", "Stars", "score"]
 
-# ─── 1. Download and load ──────────────────────────────────────────────────────
+# ─── 1. Load ──────────────────────────────────────────────────────────────────
 
-def download_dataset() -> str:
-    """Download dataset via kagglehub and return path to the downloaded folder."""
-    print("Downloading farukalam/yelp-restaurant-reviews via kagglehub …")
-    path = kagglehub.dataset_download("farukalam/yelp-restaurant-reviews")
-    print(f"Downloaded to: {path}")
-    return path
+def load_raw() -> pd.DataFrame:
+    """Load the raw CSV and normalise to standard column names."""
+    print(f"Loading {RAW_CSV} …")
+    df = pd.read_csv(RAW_CSV)
 
+    # Rename to standard names used throughout the pipeline
+    df = df.rename(columns={
+        "Review Text": "text",
+        "Rating":      "stars",
+        "Yelp URL":    "url",
+        "Date":        "date",
+    })
 
-def load_raw(download_path: str) -> pd.DataFrame:
-    """
-    Find the CSV file in the downloaded folder, load it, and normalise
-    column names to 'text' and 'stars' regardless of the original naming.
-    """
-    csv_files = glob.glob(os.path.join(download_path, "**", "*.csv"), recursive=True)
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV file found in downloaded dataset at {download_path}")
+    # Extract a business slug from the URL to use as business_id
+    # e.g. "https://www.yelp.com/biz/sidney-dairy-barn-sidney" → "sidney-dairy-barn-sidney"
+    df["business_id"] = df["url"].str.extract(r"/biz/([^/?]+)")
 
-    csv_path = csv_files[0]
-    print(f"Loading CSV: {csv_path} …")
-    df = pd.read_csv(csv_path)
-    print(f"Columns found: {list(df.columns)}")
-
-    # Normalise text column
-    text_col = next((c for c in TEXT_ALIASES if c in df.columns), None)
-    if text_col is None:
-        raise ValueError(
-            f"Could not find a review text column. Available columns: {list(df.columns)}\n"
-            f"Expected one of: {TEXT_ALIASES}"
-        )
-
-    # Normalise rating column
-    rating_col = next((c for c in RATING_ALIASES if c in df.columns), None)
-    if rating_col is None:
-        raise ValueError(
-            f"Could not find a star rating column. Available columns: {list(df.columns)}\n"
-            f"Expected one of: {RATING_ALIASES}"
-        )
-
-    df = df.rename(columns={text_col: "text", rating_col: "stars"})
-
-    # Keep business_id if it exists (used for subgroup analysis)
-    if "business_id" not in df.columns:
-        df["business_id"] = "unknown"
-
-    return df[["text", "stars", "business_id"] + [
-        c for c in df.columns if c not in ("text", "stars", "business_id")
-    ]]
+    return df[["text", "stars", "business_id", "date"]]
 
 
 # ─── 2. Clean text ────────────────────────────────────────────────────────────
 
 def clean_text(text: str) -> str:
-    """Basic text cleaning: strip HTML entities, non-ASCII, excess whitespace."""
-    text = re.sub(r"<[^>]+>", " ", text)          # remove HTML tags
-    text = re.sub(r"[^\x00-\x7F]+", " ", text)    # remove non-ASCII
+    """Strip HTML tags, non-ASCII characters, and excess whitespace."""
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"[^\x00-\x7F]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -90,7 +59,7 @@ def clean_text(text: str) -> str:
 def stratified_sample(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
     """
     Sample n rows with equal representation across star ratings (1–5).
-    If a stratum has fewer than n//5 rows, take all of them.
+    Takes min(per_class, available) rows per stratum.
     """
     per_class = n // 5
     parts = []
@@ -101,10 +70,10 @@ def stratified_sample(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
     return pd.concat(parts).sample(frac=1, random_state=seed).reset_index(drop=True)
 
 
-# ─── 4. Tokenize for Word2Vec ─────────────────────────────────────────────────
+# ─── 4. Tokenise for Word2Vec ─────────────────────────────────────────────────
 
 def simple_tokenize(text: str) -> list[str]:
-    """Lowercase and split on non-alphanumeric chars; remove short tokens."""
+    """Lowercase, remove punctuation, drop tokens shorter than 3 chars."""
     tokens = re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
     return [t for t in tokens if len(t) > 2]
 
@@ -112,49 +81,36 @@ def simple_tokenize(text: str) -> list[str]:
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-    # Download and load
-    download_path = download_dataset()
-    df = load_raw(download_path)
+    df = load_raw()
     print(f"Raw dataset: {len(df):,} rows")
+    print(f"Rating distribution:\n{df['stars'].value_counts().sort_index()}\n")
 
-    # Validate columns
-    required = {"text", "stars"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Missing columns in dataset: {missing}")
-
-    # Drop rows with missing text or stars
-    df = df.dropna(subset=["text", "stars"])
+    # Cast and validate ratings
     df["stars"] = df["stars"].astype(int)
-    df = df[df["stars"].between(1, 5)]
-    print(f"After dropping nulls/invalid stars: {len(df):,} rows")
+    df = df[df["stars"].between(1, 5)].dropna(subset=["text"])
 
-    # Sample
+    # Stratified sample
     df = stratified_sample(df, SAMPLE_SIZE, RANDOM_SEED)
-    print(f"Stratified sample: {len(df):,} rows")
+    print(f"Sampled {len(df):,} rows (stratified by star rating)")
     print(df["stars"].value_counts().sort_index())
 
     # Clean text
-    print("Cleaning text …")
+    print("\nCleaning text …")
     df["text_clean"] = df["text"].apply(clean_text)
 
-    # Tokenize (stored as space-joined string for easy re-use)
-    print("Tokenizing …")
-    df["tokens"] = df["text_clean"].apply(
-        lambda t: " ".join(simple_tokenize(t))
-    )
+    # Tokenise (space-joined string for easy re-use in Word2Vec)
+    print("Tokenising …")
+    df["tokens"] = df["text_clean"].apply(lambda t: " ".join(simple_tokenize(t)))
 
-    # Filter out very short documents (< 10 tokens)
+    # Drop very short documents (< 10 tokens)
+    before = len(df)
     df = df[df["tokens"].str.split().str.len() >= 10].reset_index(drop=True)
-    print(f"After filtering short docs: {len(df):,} rows")
+    print(f"Dropped {before - len(df)} docs with < 10 tokens → {len(df):,} remaining")
 
     # Save
-    out_path = os.path.join(DATA_DIR, "yelp_processed.csv")
-    df.to_csv(out_path, index=False)
-    print(f"\nSaved processed data to {out_path}")
-    print(df[["stars", "text_clean", "tokens"]].head(3))
+    df.to_csv(OUT_CSV, index=False)
+    print(f"\nSaved → {OUT_CSV}")
+    print(df[["stars", "business_id", "text_clean"]].head(3).to_string())
 
 
 if __name__ == "__main__":
