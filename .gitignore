@@ -17,7 +17,6 @@ env/
 # Data (raw files can be large — keep processed sample)
 data/yelp_review.csv
 data/yelp_academic_dataset_review.json
-data/Yelp Restaurant Reviews.csv
 
 # macOS
 .DS_Store
