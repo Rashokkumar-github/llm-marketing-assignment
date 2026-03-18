@@ -1,57 +1,78 @@
 """
 01_data_prep.py
 ---------------
-Load the raw Yelp review dataset, sample 15,000 rows stratified by star rating,
-clean the text, and save the processed file to data/yelp_processed.csv.
+Download the Yelp restaurant reviews dataset via kagglehub, sample 15,000 rows
+stratified by star rating, clean the text, and save to data/yelp_processed.csv.
 
-Expected input:  data/yelp_review.csv  (or yelp_academic_dataset_review.json)
-Output:          data/yelp_processed.csv
+Dataset:  farukalam/yelp-restaurant-reviews  (Kaggle)
+Output:   data/yelp_processed.csv
 """
 
 import os
 import re
-import json
+import glob
 import pandas as pd
+import kagglehub
 from tqdm import tqdm
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
-SAMPLE_SIZE = 15_000       # total rows to keep
+DATA_DIR    = os.path.join(os.path.dirname(__file__), "..", "data")
+SAMPLE_SIZE = 15_000
 RANDOM_SEED = 42
 
-# ─── 1. Load raw data ─────────────────────────────────────────────────────────
+# Column name variants to try for review text and star rating
+TEXT_ALIASES   = ["text", "review", "Review", "review_text", "Review_Text", "body"]
+RATING_ALIASES = ["stars", "rating", "Rating", "star_rating", "Stars", "score"]
 
-def load_raw(data_dir: str) -> pd.DataFrame:
+# ─── 1. Download and load ──────────────────────────────────────────────────────
+
+def download_dataset() -> str:
+    """Download dataset via kagglehub and return path to the downloaded folder."""
+    print("Downloading farukalam/yelp-restaurant-reviews via kagglehub …")
+    path = kagglehub.dataset_download("farukalam/yelp-restaurant-reviews")
+    print(f"Downloaded to: {path}")
+    return path
+
+
+def load_raw(download_path: str) -> pd.DataFrame:
     """
-    Try to load the Yelp dataset from several common filenames/formats.
-    Supports both the Kaggle CSV and the official Yelp JSON lines file.
+    Find the CSV file in the downloaded folder, load it, and normalise
+    column names to 'text' and 'stars' regardless of the original naming.
     """
-    csv_path  = os.path.join(data_dir, "yelp_review.csv")
-    json_path = os.path.join(data_dir, "yelp_academic_dataset_review.json")
+    csv_files = glob.glob(os.path.join(download_path, "**", "*.csv"), recursive=True)
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV file found in downloaded dataset at {download_path}")
 
-    if os.path.exists(csv_path):
-        print(f"Loading CSV from {csv_path} …")
-        df = pd.read_csv(csv_path, usecols=["text", "stars", "business_id"])
-        return df
+    csv_path = csv_files[0]
+    print(f"Loading CSV: {csv_path} …")
+    df = pd.read_csv(csv_path)
+    print(f"Columns found: {list(df.columns)}")
 
-    if os.path.exists(json_path):
-        print(f"Loading JSON lines from {json_path} …")
-        records = []
-        with open(json_path, "r", encoding="utf-8") as f:
-            for line in tqdm(f, desc="Reading JSON"):
-                rec = json.loads(line)
-                records.append({
-                    "text":        rec.get("text", ""),
-                    "stars":       rec.get("stars"),
-                    "business_id": rec.get("business_id", ""),
-                })
-        return pd.DataFrame(records)
+    # Normalise text column
+    text_col = next((c for c in TEXT_ALIASES if c in df.columns), None)
+    if text_col is None:
+        raise ValueError(
+            f"Could not find a review text column. Available columns: {list(df.columns)}\n"
+            f"Expected one of: {TEXT_ALIASES}"
+        )
 
-    raise FileNotFoundError(
-        "No Yelp data file found in data/. "
-        "Please place yelp_review.csv or yelp_academic_dataset_review.json in the data/ folder.\n"
-        "Download from: https://www.kaggle.com/datasets/yelp-dataset/yelp-dataset"
-    )
+    # Normalise rating column
+    rating_col = next((c for c in RATING_ALIASES if c in df.columns), None)
+    if rating_col is None:
+        raise ValueError(
+            f"Could not find a star rating column. Available columns: {list(df.columns)}\n"
+            f"Expected one of: {RATING_ALIASES}"
+        )
+
+    df = df.rename(columns={text_col: "text", rating_col: "stars"})
+
+    # Keep business_id if it exists (used for subgroup analysis)
+    if "business_id" not in df.columns:
+        df["business_id"] = "unknown"
+
+    return df[["text", "stars", "business_id"] + [
+        c for c in df.columns if c not in ("text", "stars", "business_id")
+    ]]
 
 
 # ─── 2. Clean text ────────────────────────────────────────────────────────────
@@ -93,8 +114,9 @@ def simple_tokenize(text: str) -> list[str]:
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
 
-    # Load
-    df = load_raw(DATA_DIR)
+    # Download and load
+    download_path = download_dataset()
+    df = load_raw(download_path)
     print(f"Raw dataset: {len(df):,} rows")
 
     # Validate columns
