@@ -21,8 +21,9 @@ The dependent variable (DV) is the **star rating** (1–5).
 | Property | Detail |
 |----------|--------|
 | Raw rows | 19,896 reviews |
-| Cleaned sample | 10,526 reviews (stratified, ≥ 10 tokens, HTML stripped) |
-| Regression sample | 7,003 reviews (BERTopic outlier cluster −1 excluded) |
+| Stratified sample | 6,085 reviews (1,217 per star level — capped at smallest class) |
+| Cleaned sample | 6,070 reviews (≥ 10 tokens, HTML stripped) |
+| Regression sample | 3,877 reviews (BERTopic outlier cluster −1 excluded) |
 | Columns | `Yelp URL`, `Rating` (1–5), `Date`, `Review Text` |
 | DV | `Rating` — star rating 1–5 |
 | Source | Yelp restaurant reviews |
@@ -41,7 +42,7 @@ The dataset meets all assignment criteria:
 ```
 ├── data/
 │   ├── Yelp Restaurant Reviews.csv   # raw dataset (19,896 rows)
-│   ├── yelp_processed.csv            # cleaned 10,526-review sample (01_data_prep.py)
+│   ├── yelp_processed.csv            # cleaned 6,070-review sample, 1,217/star (01_data_prep.py)
 │   └── yelp_topics.csv               # enriched with topic + sentiment columns (03_topic_sentiment.py)
 ├── docs/
 │   └── assignment.md                 # full written report (all parts)
