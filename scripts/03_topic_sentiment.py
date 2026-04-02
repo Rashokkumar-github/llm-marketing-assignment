@@ -151,16 +151,42 @@ def plot_topic_prevalence(df: pd.DataFrame, topic_model: BERTopic):
 
 
 def plot_topic_sentiment(agg: pd.DataFrame):
-    """Bar chart of mean VADER compound score per topic."""
-    top_agg = agg.head(20)
-    colors = ["#2ecc71" if s > 0 else "#e74c3c" for s in top_agg["mean_sentiment"]]
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.barh(top_agg["topic"].astype(str), top_agg["mean_sentiment"], color=colors)
+    """
+    Bar chart of mean VADER compound score for the 15 focal topics (Topics 0–14).
+    These are the 15 most prevalent topics used in the regression analysis.
+    Sorted by sentiment score so the chart reads as a clear ranking.
+    """
+    FOCAL_TOPIC_LABELS = {
+        0:  "T0: Soft-Serve & Pastry Counter",
+        1:  "T1: Donuts",
+        2:  "T2: French Bakery & Macarons",
+        3:  "T3: Ice Cream",
+        4:  "T4: Cupcakes",
+        5:  "T5: Custom Cakes & Birthdays",
+        6:  "T6: French Café (Amelie)",
+        7:  "T7: Personal Narratives",
+        8:  "T8: Coffee & General Praise",
+        9:  "T9: Lobster Tail Cannoli",
+        10: "T10: Italian Bakery (Presti's)",
+        11: "T11: Cannoli",
+        12: "T12: Charlotte / Location",
+        13: "T13: Croissants & Almond Pastries",
+        14: "T14: Hot Fudge Sundaes (Ghirardelli)",
+    }
+
+    focal = (
+        agg[agg["topic"].isin(FOCAL_TOPIC_LABELS)]
+        .copy()
+        .sort_values("mean_sentiment", ascending=True)   # ascending so highest is at top
+    )
+    focal["label"] = focal["topic"].map(FOCAL_TOPIC_LABELS)
+    colors = ["#2ecc71" if s > 0 else "#e74c3c" for s in focal["mean_sentiment"]]
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.barh(focal["label"], focal["mean_sentiment"], color=colors)
     ax.axvline(0, color="black", linewidth=0.8)
     ax.set_xlabel("Mean VADER Compound Score")
-    ax.set_ylabel("Topic ID")
-    ax.set_title("Topic-Level Sentiment (Top 20 Topics)")
-    ax.invert_yaxis()
+    ax.set_title("Topic-Level Sentiment — 15 Focal Topics (sorted by score)")
     plt.tight_layout()
     out = os.path.join(OUTPUT_DIR, "fig_topic_sentiment.png")
     plt.savefig(out, dpi=150); plt.close()

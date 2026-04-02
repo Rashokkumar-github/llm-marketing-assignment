@@ -195,7 +195,7 @@ def tsne_cluster_plot(model: Word2Vec, seed_words: list[str], n_neighbors: int =
 
     # t-SNE
     perplexity = min(30, len(all_words) - 1)
-    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=seed, n_iter=1000)
+    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, n_iter=1000)
     coords = tsne.fit_transform(vectors)
 
     # Assign group colour
