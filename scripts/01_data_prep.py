@@ -1,8 +1,9 @@
 """
 01_data_prep.py
 ---------------
-Load the Yelp Restaurant Reviews dataset, sample 15,000 rows stratified by
-star rating, clean the text, and save to data/yelp_processed.csv.
+Load the Yelp Restaurant Reviews dataset, sample rows stratified by
+star rating (1,217 per star — capped by the smallest class), clean the
+text, and save to data/yelp_processed.csv.
 
 Input:   data/Yelp Restaurant Reviews.csv
 Output:  data/yelp_processed.csv
@@ -18,7 +19,7 @@ DATA_DIR    = os.path.join(BASE_DIR, "data")
 RAW_CSV     = os.path.join(DATA_DIR, "Yelp Restaurant Reviews.csv")
 OUT_CSV     = os.path.join(DATA_DIR, "yelp_processed.csv")
 
-SAMPLE_SIZE = 15_000
+SAMPLE_SIZE = 6_085   # 1,217 per star (= min class size × 5)
 RANDOM_SEED = 42
 
 
@@ -58,8 +59,8 @@ def clean_text(text: str) -> str:
 
 def stratified_sample(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
     """
-    Sample n rows with equal representation across star ratings (1–5).
-    Takes min(per_class, available) rows per stratum.
+    Sample n rows with exactly equal representation across star ratings (1–5).
+    per_class = n // 5 = 1,217 — the size of the smallest (1-star) stratum.
     """
     per_class = n // 5
     parts = []
